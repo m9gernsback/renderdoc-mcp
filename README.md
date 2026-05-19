@@ -3,6 +3,8 @@
   <b>AI-native GPU frame debugging for RenderDoc</b><br><br>
   <a href="https://github.com/JiaboLi-GitHub/renderdoc-mcp/actions/workflows/release.yml"><img src="https://github.com/JiaboLi-GitHub/renderdoc-mcp/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a><br>
+  <a href="https://oosmetrics.com/repo/JiaboLi-GitHub/renderdoc-mcp"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/5ab44894-4c44-4fee-903d-9dd6f86d2d46.svg" alt="oosmetrics: Top 3 in Graphics by acceleration"></a>
+  <a href="https://oosmetrics.com/repo/JiaboLi-GitHub/renderdoc-mcp"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/90a5455c-2c8f-43c3-868d-61c5b0811f78.svg" alt="oosmetrics: Top 6 in Backend by acceleration"></a><br>
   <b>English</b> | <a href="README-CN.md">简体中文</a>
 </p>
 

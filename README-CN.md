@@ -3,6 +3,8 @@
   <b>面向 AI 的 RenderDoc GPU 帧调试工具</b><br><br>
   <a href="https://github.com/JiaboLi-GitHub/renderdoc-mcp/actions/workflows/release.yml"><img src="https://github.com/JiaboLi-GitHub/renderdoc-mcp/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a><br>
+  <a href="https://oosmetrics.com/repo/JiaboLi-GitHub/renderdoc-mcp"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/5ab44894-4c44-4fee-903d-9dd6f86d2d46.svg" alt="oosmetrics：Graphics 加速度榜 Top 3"></a>
+  <a href="https://oosmetrics.com/repo/JiaboLi-GitHub/renderdoc-mcp"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/90a5455c-2c8f-43c3-868d-61c5b0811f78.svg" alt="oosmetrics：Backend 加速度榜 Top 6"></a><br>
   <a href="README.md">English</a> | <b>简体中文</b>
 </p>
 

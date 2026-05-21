@@ -2,7 +2,7 @@
 
 ## Overview
 
-renderdoc-mcp is a C++17 MCP server and CLI wrapping RenderDoc's replay API into 59+ structured tools. It communicates via JSON-RPC over stdio, enabling AI assistants to inspect GPU frame captures.
+renderdoc-mcp is a C++17 MCP server and CLI wrapping RenderDoc's replay API into 60+ structured tools. It communicates via JSON-RPC over stdio, enabling AI assistants to inspect GPU frame captures.
 
 Target platform: Windows. Links against RenderDoc v1.43 (see `renderdoc-version.txt`).
 

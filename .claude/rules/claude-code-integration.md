@@ -48,3 +48,4 @@ Key code: `src/mcp/mcp_server.cpp` in `handleInitialize()` — the server accept
 | Server shows "disconnected" | Protocol version mismatch — server rejects the client's version | Ensure `handleInitialize` does not reject unknown versions |
 | Server shows "disconnected" | Exe not found or crashes on start | Verify exe exists and `renderdoc.dll` is next to it |
 | Tools fail with path errors | WSL paths passed to Windows exe | Use Windows-style paths (e.g., `E:\...`) for .rdc files |
+| `list_disassembly_targets` missing external tools | External tools (AdrenoOfflineCompiler, etc.) are GUI-only in RenderDoc | Use `run_shader_tool` instead — it extracts raw shader bytes and runs external tools directly |

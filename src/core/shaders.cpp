@@ -252,7 +252,8 @@ ShaderReflection getShaderReflection(const Session& session,
 
 ShaderDisassembly getShaderDisassembly(const Session& session,
                                         ShaderStage stage,
-                                        std::optional<uint32_t> eventId) {
+                                        std::optional<uint32_t> eventId,
+                                        std::optional<std::string> target) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
     if (eventId)
@@ -268,13 +269,44 @@ ShaderDisassembly getShaderDisassembly(const Session& session,
     if (targets.isEmpty())
         throw CoreError(CoreError::Code::InternalError, "No disassembly targets available.");
 
-    rdcstr disasmText = ctrl->DisassembleShader(::ResourceId(), si.reflection, targets[0]);
+    // Use specified target or fall back to the default (first) target.
+    rdcstr selectedTarget = targets[0];
+    if (target.has_value()) {
+        bool found = false;
+        for (int i = 0; i < targets.count(); i++) {
+            if (std::string(targets[i].c_str()) == *target) {
+                selectedTarget = targets[i];
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            throw CoreError(CoreError::Code::InternalError,
+                            "Unknown disassembly target: '" + *target +
+                            "'. Use list_disassembly_targets to see available targets.");
+    }
+
+    rdcstr disasmText = ctrl->DisassembleShader(::ResourceId(), si.reflection, selectedTarget);
 
     ShaderDisassembly result;
     result.id          = toResourceId(si.resourceId);
     result.stage       = stage;
     result.disassembly = std::string(disasmText.c_str());
-    result.target      = std::string(targets[0].c_str());
+    result.target      = std::string(selectedTarget.c_str());
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+
+std::vector<std::string> listDisassemblyTargets(const Session& session) {
+    auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
+
+    rdcarray<rdcstr> targets = ctrl->GetDisassemblyTargets(true);
+
+    std::vector<std::string> result;
+    result.reserve(targets.count());
+    for (int i = 0; i < targets.count(); i++)
+        result.push_back(std::string(targets[i].c_str()));
     return result;
 }
 
@@ -387,6 +419,189 @@ std::vector<ShaderSearchMatch> searchShaders(const Session& session,
 
         result.push_back(std::move(match));
     }
+
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// External shader tool execution
+// ---------------------------------------------------------------------------
+
+} // namespace renderdoc::core
+
+// Platform includes for process execution — placed after namespace close to
+// avoid polluting the renderdoc::core namespace with Windows macros.
+#include <filesystem>
+#include <fstream>
+#include <cstdio>
+#include <array>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <cstdlib>
+#endif
+
+namespace fs = std::filesystem;
+
+namespace renderdoc::core {
+
+namespace {
+
+std::string shaderEncodingString(::ShaderEncoding enc) {
+    switch (enc) {
+    case ::ShaderEncoding::DXBC:           return "DXBC";
+    case ::ShaderEncoding::GLSL:           return "GLSL";
+    case ::ShaderEncoding::SPIRV:          return "SPIRV";
+    case ::ShaderEncoding::SPIRVAsm:       return "SPIRVAsm";
+    case ::ShaderEncoding::HLSL:           return "HLSL";
+    case ::ShaderEncoding::DXIL:           return "DXIL";
+    case ::ShaderEncoding::OpenGLSPIRV:    return "OpenGLSPIRV";
+    case ::ShaderEncoding::OpenGLSPIRVAsm: return "OpenGLSPIRVAsm";
+    case ::ShaderEncoding::Slang:          return "Slang";
+    default:                               return "Unknown";
+    }
+}
+
+std::string stageToLongName(ShaderStage stage) {
+    switch (stage) {
+    case ShaderStage::Vertex:   return "vert";
+    case ShaderStage::Hull:     return "tesc";
+    case ShaderStage::Domain:   return "tese";
+    case ShaderStage::Geometry: return "geom";
+    case ShaderStage::Pixel:    return "frag";
+    case ShaderStage::Compute:  return "comp";
+    default:                    return "unknown";
+    }
+}
+
+// Replace all occurrences of `from` with `to` in `str`.
+void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+    size_t pos = 0;
+    while ((pos = str.find(from, pos)) != std::string::npos) {
+        str.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
+
+// Execute a command and capture stdout. Returns {output, exitCode}.
+std::pair<std::string, int> executeCommand(const std::string& cmdLine) {
+    std::string output;
+    int exitCode = -1;
+
+#ifdef _WIN32
+    FILE* pipe = _popen(cmdLine.c_str(), "r");
+#else
+    FILE* pipe = popen(cmdLine.c_str(), "r");
+#endif
+
+    if (!pipe)
+        return {output, exitCode};
+
+    std::array<char, 4096> buffer;
+    while (fgets(buffer.data(), (int)buffer.size(), pipe) != nullptr)
+        output += buffer.data();
+
+#ifdef _WIN32
+    exitCode = _pclose(pipe);
+#else
+    exitCode = pclose(pipe);
+#endif
+
+    return {output, exitCode};
+}
+
+} // anonymous namespace
+
+ShaderToolResult runShaderTool(const Session& session,
+                               ShaderStage stage,
+                               const std::string& executable,
+                               const std::string& args,
+                               std::optional<uint32_t> eventId) {
+    auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
+
+    if (eventId)
+        ctrl->SetFrameEvent(*eventId, true);
+
+    std::string stageName = stageToString(stage);
+    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName);
+    if (!si.reflection)
+        throw CoreError(CoreError::Code::NoShaderBound,
+                        "No shader bound at stage '" + stageName + "' for the current event.");
+
+    // Get raw shader bytes
+    const bytebuf& rawBytes = si.reflection->rawBytes;
+    if (rawBytes.isEmpty())
+        throw CoreError(CoreError::Code::InternalError,
+                        "Shader has no raw bytes available at stage '" + stageName + "'.");
+
+    // Create temp directory
+    fs::path tmpDir = fs::temp_directory_path() / "renderdoc-mcp";
+    fs::create_directories(tmpDir);
+
+    fs::path inputPath  = tmpDir / "shader_input.bin";
+    fs::path outputPath = tmpDir / "shader_output.txt";
+
+    // Write raw shader bytes to temp file
+    {
+        std::ofstream f(inputPath, std::ios::binary);
+        if (!f)
+            throw CoreError(CoreError::Code::ExportFailed,
+                            "Failed to write shader bytes to temp file: " + inputPath.string());
+        f.write(reinterpret_cast<const char*>(rawBytes.data()), rawBytes.count());
+    }
+
+    // Get entry point
+    std::string entryPoint = "main";
+    if (si.reflection->entryPoint.count() > 0)
+        entryPoint = std::string(si.reflection->entryPoint.c_str());
+
+    // Expand placeholders in args
+    std::string expandedArgs = args;
+    replaceAll(expandedArgs, "{input_file}", inputPath.string());
+    replaceAll(expandedArgs, "{output_file}", outputPath.string());
+    replaceAll(expandedArgs, "{entry_point}", entryPoint);
+    replaceAll(expandedArgs, "{stage}", stageToLongName(stage));
+
+    // If args is empty, default to just passing the input file
+    if (expandedArgs.empty())
+        expandedArgs = inputPath.string();
+
+    // Build command line
+    std::string cmdLine = "\"" + executable + "\" " + expandedArgs;
+
+    // Redirect stderr to stdout so we capture everything
+    cmdLine += " 2>&1";
+
+    // Execute
+    auto [stdoutOutput, exitCode] = executeCommand(cmdLine);
+
+    // Check if output file was produced (if {output_file} was in args)
+    std::string toolOutput;
+    bool hasOutputFile = (args.find("{output_file}") != std::string::npos);
+    if (hasOutputFile && fs::exists(outputPath)) {
+        std::ifstream f(outputPath, std::ios::binary);
+        if (f) {
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            toolOutput = ss.str();
+        }
+        fs::remove(outputPath);
+    } else {
+        toolOutput = stdoutOutput;
+    }
+
+    // Clean up input file
+    fs::remove(inputPath);
+
+    // Build result
+    ShaderToolResult result;
+    result.output   = toolOutput;
+    result.errors   = hasOutputFile ? stdoutOutput : "";
+    result.exitCode = exitCode;
+    result.encoding = shaderEncodingString(si.reflection->encoding);
+    result.stage    = stage;
 
     return result;
 }

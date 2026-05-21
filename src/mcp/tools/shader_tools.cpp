@@ -8,15 +8,31 @@ namespace renderdoc::mcp::tools {
 
 void registerShaderTools(ToolRegistry& registry) {
 
+    // ── list_disassembly_targets ─────────────────────────────────────────────
+    registry.registerTool({
+        "list_disassembly_targets",
+        "List available shader disassembly targets. Includes the native format plus any "
+        "external tools configured in RenderDoc (e.g. AdrenoOfflineCompiler, Mali Offline Compiler). "
+        "Use the returned target names with get_shader's target parameter.",
+        {{"type", "object"}, {"properties", nlohmann::json::object()}},
+        [](mcp::ToolContext& ctx, const nlohmann::json& /*args*/) -> nlohmann::json {
+            auto& session = ctx.session;
+            auto targets = core::listDisassemblyTargets(session);
+            return {{"targets", targets}, {"count", targets.size()}};
+        }
+    });
+
     // ── get_shader ────────────────────────────────────────────────────────────
     registry.registerTool({
         "get_shader",
-        "Get shader disassembly or reflection data at an event for a given stage",
+        "Get shader disassembly or reflection data at an event for a given stage. "
+        "Use the target parameter to select a specific disassembly format (from list_disassembly_targets).",
         {{"type", "object"},
          {"properties", {
              {"eventId", {{"type", "integer"}, {"description", "Event ID (uses current if omitted)"}}},
              {"stage",   {{"type", "string"},  {"enum", nlohmann::json::array({"vs","hs","ds","gs","ps","cs"})}}},
-             {"mode",    {{"type", "string"},  {"enum", nlohmann::json::array({"disasm","reflect"})}, {"default", "disasm"}}}
+             {"mode",    {{"type", "string"},  {"enum", nlohmann::json::array({"disasm","reflect"})}, {"default", "disasm"}}},
+             {"target",  {{"type", "string"},  {"description", "Disassembly target (from list_disassembly_targets). Uses default native format if omitted. Only used with mode=disasm."}}}
          }},
          {"required", nlohmann::json::array({"stage"})}},
         [](mcp::ToolContext& ctx, const nlohmann::json& args) -> nlohmann::json {
@@ -35,7 +51,10 @@ void registerShaderTools(ToolRegistry& registry) {
                 return to_json(refl);
             } else {
                 // Default: disasm
-                auto disasm = core::getShaderDisassembly(session, stage, eventId);
+                std::optional<std::string> target;
+                if (args.contains("target"))
+                    target = args["target"].get<std::string>();
+                auto disasm = core::getShaderDisassembly(session, stage, eventId, target);
                 return to_json(disasm);
             }
         }
@@ -87,6 +106,39 @@ void registerShaderTools(ToolRegistry& registry) {
             result["count"]   = matches.size();
             result["pattern"] = pattern;
             return result;
+        }
+    });
+
+    // ── run_shader_tool ──────────────────────────────────────────────────────
+    registry.registerTool({
+        "run_shader_tool",
+        "Run an external shader processing tool on the bound shader's raw bytes (e.g. SPIR-V). "
+        "Extracts the shader binary, writes it to a temp file, executes the tool, and returns the output. "
+        "Supports tools like AdrenoOfflineCompiler, spirv-dis, spirv-cross, Mali Offline Compiler, etc. "
+        "Use placeholders in args: {input_file}, {output_file}, {entry_point}, {stage}.",
+        {{"type", "object"},
+         {"properties", {
+             {"stage",      {{"type", "string"}, {"enum", nlohmann::json::array({"vs","hs","ds","gs","ps","cs"})},
+                             {"description", "Shader stage to extract"}}},
+             {"executable", {{"type", "string"}, {"description", "Path to the external tool executable"}}},
+             {"args",       {{"type", "string"}, {"description", "Command-line arguments with placeholders: {input_file}, {output_file}, {entry_point}, {stage}. Defaults to just passing {input_file} if omitted."}}},
+             {"eventId",    {{"type", "integer"}, {"description", "Event ID (uses current if omitted)"}}}
+         }},
+         {"required", nlohmann::json::array({"stage", "executable"})}},
+        [](mcp::ToolContext& ctx, const nlohmann::json& args) -> nlohmann::json {
+            auto& session = ctx.session;
+            const std::string stageStr    = args["stage"].get<std::string>();
+            const std::string executable  = args["executable"].get<std::string>();
+            const std::string toolArgs    = args.value("args", std::string(""));
+
+            core::ShaderStage stage = parseShaderStage(stageStr);
+
+            std::optional<uint32_t> eventId;
+            if (args.contains("eventId"))
+                eventId = args["eventId"].get<uint32_t>();
+
+            auto result = core::runShaderTool(session, stage, executable, toolArgs, eventId);
+            return to_json(result);
         }
     });
 

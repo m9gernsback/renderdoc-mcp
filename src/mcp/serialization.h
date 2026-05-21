@@ -86,6 +86,9 @@ nlohmann::json to_json(const core::ShaderVar& var);
 nlohmann::json to_json(const core::CBufferInfo& info);
 nlohmann::json to_json(const core::CBufferContents& contents);
 
+// External Shader Tool
+nlohmann::json to_json(const core::ShaderToolResult& result);
+
 // Diff types
 nlohmann::json to_json(core::DiffStatus status);
 nlohmann::json to_json(const core::DrawRecord& rec);

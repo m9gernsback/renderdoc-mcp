@@ -533,4 +533,14 @@ struct CBufferContents {
     std::vector<ShaderVar> variables;
 };
 
+// --- External Shader Tool ---
+
+struct ShaderToolResult {
+    std::string output;       // tool stdout or output file content
+    std::string errors;       // tool stderr
+    int exitCode = 0;
+    std::string encoding;     // input shader encoding (e.g. "SPIRV", "DXBC")
+    ShaderStage stage = ShaderStage::Vertex;
+};
+
 } // namespace renderdoc::core

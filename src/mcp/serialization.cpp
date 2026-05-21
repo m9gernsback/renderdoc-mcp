@@ -780,4 +780,16 @@ nlohmann::json to_json(const core::UnusedTargetResult& result) {
     };
 }
 
+// --- External Shader Tool ---
+
+nlohmann::json to_json(const core::ShaderToolResult& result) {
+    return {
+        {"output", result.output},
+        {"errors", result.errors},
+        {"exitCode", result.exitCode},
+        {"encoding", result.encoding},
+        {"stage", shaderStageToString(result.stage)}
+    };
+}
+
 } // namespace renderdoc::mcp

@@ -145,20 +145,17 @@ json McpServer::handleInitialize(const json& msg)
 {
     json id = msg.value("id", json(nullptr));
 
-    // Validate client protocol version for compatibility
+    // Accept any MCP protocol version the client offers.
+    // The server is compatible with 2024-11-05 and 2025-03-26.
     static constexpr const char* kSupportedProtocolVersion = "2025-03-26";
     json params = msg.value("params", json::object());
+    std::string clientVersion = kSupportedProtocolVersion;
     if (params.contains("protocolVersion")) {
-        std::string clientVersion = params["protocolVersion"].get<std::string>();
-        if (clientVersion != kSupportedProtocolVersion) {
-            return makeError(id, -32602,
-                "Unsupported protocol version: " + clientVersion +
-                " (server supports " + kSupportedProtocolVersion + ")");
-        }
+        clientVersion = params["protocolVersion"].get<std::string>();
     }
 
     json result;
-    result["protocolVersion"] = kSupportedProtocolVersion;
+    result["protocolVersion"] = clientVersion;
     result["capabilities"]["tools"] = json::object();
     result["serverInfo"]["name"] = "renderdoc-mcp";
     result["serverInfo"]["version"] = "1.0.0";

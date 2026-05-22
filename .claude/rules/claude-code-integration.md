@@ -49,3 +49,5 @@ Key code: `src/mcp/mcp_server.cpp` in `handleInitialize()` — the server accept
 | Server shows "disconnected" | Exe not found or crashes on start | Verify exe exists and `renderdoc.dll` is next to it |
 | Tools fail with path errors | WSL paths passed to Windows exe | Use Windows-style paths (e.g., `E:\...`) for .rdc files |
 | `list_disassembly_targets` missing external tools | External tools (AdrenoOfflineCompiler, etc.) are GUI-only in RenderDoc | Use `run_shader_tool` instead — it extracts raw shader bytes and runs external tools directly |
+| Remote replay "Network I/O failed" | DLL version mismatch or renderdoccmd not running | See `remote-replay.md` — ensure DLL matches and device server is active |
+| Remote replay "busy" | RenderDoc GUI is holding the connection | Close the RenderDoc GUI before using MCP for remote replay |

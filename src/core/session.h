@@ -7,6 +7,7 @@
 // Forward declarations from RenderDoc
 struct ICaptureFile;
 struct IReplayController;
+struct IRemoteServer;
 
 namespace renderdoc::core {
 
@@ -18,12 +19,17 @@ public:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
-    // Public API
+    // Public API — local replay
     CaptureInfo open(const std::string& path);
     void close();
     SessionStatus status() const;
     bool isOpen() const;
     void ensureReplayInitialized();
+
+    // Public API — remote replay
+    CaptureInfo openRemote(const std::string& host, const std::string& capturePath);
+    void disconnectRemote();
+    bool isRemote() const;
 
     // Internal accessors for other core modules.
     // Convention: mcp/cli layers should NOT call these directly.
@@ -49,6 +55,11 @@ private:
     uint32_t m_totalEvents = 0;
     GraphicsApi m_api = GraphicsApi::Unknown;
     ShaderEditState m_shaderEditState;
+
+    // Remote replay state
+    IRemoteServer* m_remoteServer = nullptr;
+    bool m_isRemote = false;
+    std::string m_remoteHost;
 };
 
 } // namespace renderdoc::core

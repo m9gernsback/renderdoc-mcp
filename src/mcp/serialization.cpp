@@ -94,7 +94,8 @@ nlohmann::json to_json(const core::CaptureInfo& info) {
 nlohmann::json to_json(const core::SessionStatus& s) {
     return {{"isOpen", s.isOpen}, {"capturePath", s.capturePath},
             {"api", graphicsApiToString(s.api)},
-            {"currentEventId", s.currentEventId}, {"totalEvents", s.totalEvents}};
+            {"currentEventId", s.currentEventId}, {"totalEvents", s.totalEvents},
+            {"isRemote", s.isRemote}, {"remoteHost", s.remoteHost}};
 }
 
 nlohmann::json to_json(const core::EventInfo& e) {

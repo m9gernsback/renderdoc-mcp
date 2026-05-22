@@ -11,9 +11,12 @@ void registerShaderTools(ToolRegistry& registry) {
     // ── list_disassembly_targets ─────────────────────────────────────────────
     registry.registerTool({
         "list_disassembly_targets",
-        "List available shader disassembly targets. Includes the native format plus any "
-        "external tools configured in RenderDoc (e.g. AdrenoOfflineCompiler, Mali Offline Compiler). "
-        "Use the returned target names with get_shader's target parameter.",
+        "List available shader disassembly targets from the replay API. Returns built-in targets only "
+        "(e.g. 'SPIR-V (RenderDoc)', 'KHR_pipeline_executable_properties', 'AMD GCN ISA'). "
+        "Use the returned target names with get_shader's target parameter.\n\n"
+        "NOTE: External tools like AdrenoOfflineCompiler, spirv-dis, or Mali Offline Compiler are "
+        "NOT listed here — they are a GUI-only feature in RenderDoc. Use run_shader_tool instead "
+        "to invoke external tools on the shader's raw bytes.",
         {{"type", "object"}, {"properties", nlohmann::json::object()}},
         [](mcp::ToolContext& ctx, const nlohmann::json& /*args*/) -> nlohmann::json {
             auto& session = ctx.session;

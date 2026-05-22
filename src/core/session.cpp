@@ -12,6 +12,7 @@ Session::Session() = default;
 
 Session::~Session() {
     close();
+    disconnectRemote();
     if (m_replayInitialized)
         RENDERDOC_ShutdownReplay();
 }
@@ -29,7 +30,12 @@ void Session::ensureReplayInitialized() {
 void Session::closeCurrent() {
     if (m_controller) {
         cleanupShaderEdits(*this);
-        m_controller->Shutdown();
+        if (m_isRemote && m_remoteServer) {
+            // CRITICAL: for remote replay, must use CloseCapture, NOT Shutdown
+            m_remoteServer->CloseCapture(m_controller);
+        } else {
+            m_controller->Shutdown();
+        }
         m_controller = nullptr;
     }
     if (m_captureFile) {
@@ -41,6 +47,7 @@ void Session::closeCurrent() {
     m_totalEvents = 0;
     m_api = GraphicsApi::Unknown;
     m_shaderEditState.clear();
+    m_isRemote = false;
 }
 
 void Session::close() {
@@ -104,6 +111,8 @@ SessionStatus Session::status() const {
     s.api = m_api;
     s.currentEventId = m_currentEventId;
     s.totalEvents = m_totalEvents;
+    s.isRemote = m_isRemote;
+    s.remoteHost = m_remoteHost;
     return s;
 }
 
@@ -139,5 +148,80 @@ void Session::setCurrentEventId(uint32_t eid) {
 
 ShaderEditState& Session::shaderEditState() { return m_shaderEditState; }
 const ShaderEditState& Session::shaderEditState() const { return m_shaderEditState; }
+
+// ── Remote Replay ────────────────────────────────────────────────────────────
+
+bool Session::isRemote() const { return m_isRemote; }
+
+CaptureInfo Session::openRemote(const std::string& host, const std::string& capturePath) {
+    ensureReplayInitialized();
+    closeCurrent();
+
+    // Connect to remote server if not already connected to this host
+    if (!m_remoteServer || m_remoteHost != host) {
+        disconnectRemote();
+
+        ResultDetails connResult =
+            RENDERDOC_CreateRemoteServerConnection(rdcstr(host.c_str()), &m_remoteServer);
+        if (!connResult.OK() || !m_remoteServer) {
+            m_remoteServer = nullptr;
+            throw CoreError(CoreError::Code::RemoteConnectionFailed,
+                            "Failed to connect to remote server '" + host + "': " +
+                            std::string(connResult.Message().c_str()));
+        }
+        m_remoteHost = host;
+    }
+
+    // Copy capture to remote device
+    rdcstr remotePath = m_remoteServer->CopyCaptureToRemote(rdcstr(capturePath.c_str()), nullptr);
+    if (remotePath.isEmpty()) {
+        throw CoreError(CoreError::Code::RemoteConnectionFailed,
+                        "Failed to copy capture to remote server");
+    }
+
+    // Open replay on remote device
+    ReplayOptions opts;
+    auto [replayStatus, controller] = m_remoteServer->OpenCapture(
+        IRemoteServer::NoPreference, remotePath, opts, nullptr);
+
+    if (!replayStatus.OK() || !controller) {
+        throw CoreError(CoreError::Code::ReplayInitFailed,
+                        "Failed to open remote replay: " +
+                        std::string(replayStatus.Message().c_str()));
+    }
+
+    m_controller = controller;
+    m_capturePath = capturePath;
+    m_isRemote = true;
+
+    // Gather metadata (same as local)
+    auto apiProps = m_controller->GetAPIProperties();
+    m_api = toGraphicsApi(apiProps.pipelineType);
+
+    const auto& rootActions = m_controller->GetRootActions();
+    m_totalEvents = 0;
+    uint32_t totalDraws = 0;
+    for (const auto& action : rootActions) {
+        m_totalEvents += countAllEvents(action);
+        totalDraws += countDrawCalls(action);
+    }
+
+    CaptureInfo info;
+    info.path = capturePath;
+    info.api = m_api;
+    info.degraded = apiProps.degraded;
+    info.totalEvents = m_totalEvents;
+    info.totalDraws = totalDraws;
+
+    return info;
+}
+
+void Session::disconnectRemote() {
+    if (m_remoteServer) {
+        m_remoteServer->ShutdownConnection();
+        m_remoteServer = nullptr;
+    }
+    m_remoteHost.clear();
+}
 
 } // namespace renderdoc::core

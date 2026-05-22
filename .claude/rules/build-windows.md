@@ -65,3 +65,13 @@ WSL can invoke Windows-side CMake directly:
 ```
 
 This works because WSL interop can call `.exe` files and the build directory uses Windows paths internally.
+
+## DLL Version Matching for Remote Replay
+
+For remote replay to work, `renderdoc.dll` in the build output must match the `renderdoccmd` version on the target device. If you installed RenderDoc v1.43 via the official installer and pushed `renderdoccmd` to the device from it, use the installed DLL:
+
+```powershell
+Copy-Item 'C:\Program Files\RenderDoc\renderdoc.dll' -Destination 'E:\GitHub\renderdoc-mcp\build\Release\renderdoc.dll' -Force
+```
+
+Check version: `"C:\Program Files\RenderDoc\renderdoccmd.exe" --version`

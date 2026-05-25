@@ -59,6 +59,27 @@ adb forward --remove-all
 adb forward tcp:39920 localabstract:renderdoc_39920
 ```
 
+## Remote Replay Capabilities
+
+| Feature | Works | Notes |
+|---------|-------|-------|
+| Open capture / metadata | ✅ | API, event count, draw count |
+| Event enumeration | ✅ | list_events, list_draws |
+| goto_event | ✅ | Navigation works |
+| list_disassembly_targets | ✅ | Returns device targets |
+| get_pipeline_state — render targets | ✅ | Names, formats, dimensions |
+| get_pipeline_state — viewports | ✅ | Viewport dimensions |
+| get_pipeline_state — depth target | ✅ | Name, format, dimensions |
+| get_pipeline_state — shader bindings | ⚠️ | resourceIds may be 0; use get_shader directly instead |
+| get_shader (disasm/reflect) | ✅ | Full SPIR-V disassembly and reflection |
+| run_shader_tool | ✅ | External tools work on raw shader bytes |
+| export_render_target | ✅ | Works via replay |
+| Pixel operations | ✅ | pick_pixel, pixel_history |
+
+**Note**: `get_pipeline_state` may show shader resourceIds as `ResourceId::0` over remote replay, but `get_shader(stage, eventId)` still retrieves the correct shader. Always use `get_shader` directly for shader access during remote replay rather than relying on pipeline state shader bindings.
+
+**Note**: `list_disassembly_targets` returns device-specific target names (e.g. "Disassembly", "AMD GCN ISA") which differ from local replay names (e.g. "SPIR-V (RenderDoc)"). This is normal. For external tool profiling (AOC, spirv-dis, etc.), use `run_shader_tool` directly — it does not depend on disassembly targets.
+
 ## MCP Tools for Remote Replay
 
 | Tool | Usage |
@@ -83,14 +104,23 @@ adb forward tcp:39920 localabstract:renderdoc_39920
 open_capture(path: "E:\\captures\\frame.rdc", host: "localhost:39920")
 → { api: "Vulkan", totalEvents: 1743, totalDraws: 504 }
 
-// All tools work — querying the Adreno GPU directly
-session_status()
-→ { isOpen: true, isRemote: true, remoteHost: "localhost:39920", api: "Vulkan" }
+// CRITICAL: Always goto_event FIRST — this is the one remote proxy call
+goto_event(eventId: 1343)
+→ { eventId: 1343, numIndices: 20250 }
 
-get_pipeline_state(eventId: 100)
-list_disassembly_targets()
-get_shader(stage: "ps", mode: "disasm")
+// All subsequent calls at the SAME eventId reuse cached state (no device hit)
+get_pipeline_state(eventId: 1343)
+get_shader(stage: "ps", eventId: 1343, mode: "disasm")
+run_shader_tool(stage: "ps", eventId: 1343, executable: "path/to/aoc.exe", args: "-fs {input_file} -api=Vulkan -arch=a730 -entry_point {entry_point}")
 
 // When done
 disconnect_remote()
 ```
+
+### Key Rules for Remote Replay
+
+1. **Always call `goto_event(eventId)` FIRST** — this triggers the one remote proxy call per event. All subsequent queries at the same eventId reuse cached state without hitting the device.
+2. **Use the SAME `eventId` across `goto_event`, `get_pipeline_state`, `get_shader`, `run_shader_tool`** — changing eventId triggers another proxy call. Minimize event changes to avoid device instability.
+3. **Do NOT use `get_pipeline_state` to find shader resourceIds** — they may be `ResourceId::0` over remote. Call `get_shader(stage, eventId)` directly instead.
+4. **`list_disassembly_targets` is not needed for `run_shader_tool`** — the AOC/external tool workflow extracts raw SPIR-V bytes directly, independent of disassembly targets.
+5. **Disassembly target names vary by device** — remote Adreno may return "Disassembly" instead of "SPIR-V (RenderDoc)". This is normal and does not affect functionality.

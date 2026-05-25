@@ -1,4 +1,5 @@
 #include "core/shaders.h"
+#include "core/action_helpers.h"
 #include "core/errors.h"
 #include "core/resource_id.h"
 #include "core/session.h"
@@ -40,11 +41,13 @@ struct ShaderStageInfo {
 };
 
 // Get shader info for a given stage across all supported APIs.
-ShaderStageInfo getShaderStageInfo(IReplayController* ctrl, const std::string& stage) {
-    APIProperties props = ctrl->GetAPIProperties();
+// apiType parameter allows callers to pass the cached API type (avoids
+// re-querying GetAPIProperties() which fails over remote replay proxy).
+ShaderStageInfo getShaderStageInfo(IReplayController* ctrl, const std::string& stage,
+                                   GraphicsAPI apiType = GraphicsAPI::D3D11) {
     ShaderStageInfo info;
 
-    switch (props.pipelineType) {
+    switch (apiType) {
         case GraphicsAPI::D3D11: {
             const auto* state = ctrl->GetD3D11PipelineState();
             if (!state) break;
@@ -134,7 +137,8 @@ void collectActionEvents(const rdcarray<ActionDescription>& actions,
 
 // Scan up to 10000 events and collect unique shaders (up to maxUniqueShaders).
 std::map<ShaderKey, ShaderRecord> collectUniqueShaders(IReplayController* ctrl,
-                                                        int maxUniqueShaders) {
+                                                        int maxUniqueShaders,
+                                                        GraphicsAPI apiType) {
     const auto& rootActions = ctrl->GetRootActions();
 
     std::vector<uint32_t> eventIds;
@@ -148,7 +152,7 @@ std::map<ShaderKey, ShaderRecord> collectUniqueShaders(IReplayController* ctrl,
         ctrl->SetFrameEvent(eid, true);
 
         for (const char* stageName : kAllStages) {
-            ShaderStageInfo si = getShaderStageInfo(ctrl, stageName);
+            ShaderStageInfo si = getShaderStageInfo(ctrl, stageName, apiType);
             if (!si.reflection || si.resourceId == ::ResourceId::Null())
                 continue;
 
@@ -183,11 +187,12 @@ ShaderReflection getShaderReflection(const Session& session,
                                       std::optional<uint32_t> eventId) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
-    if (eventId)
+    if (eventId && *eventId != session.currentEventId())
         ctrl->SetFrameEvent(*eventId, true);
 
     std::string stageName = stageToString(stage);
-    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName);
+    GraphicsAPI apiType = toRdcGraphicsApi(session.graphicsApi());
+    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName, apiType);
     if (!si.reflection)
         throw CoreError(CoreError::Code::InternalError,
                         "No shader bound at stage '" + stageName + "' for the current event.");
@@ -256,11 +261,12 @@ ShaderDisassembly getShaderDisassembly(const Session& session,
                                         std::optional<std::string> target) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
-    if (eventId)
+    if (eventId && *eventId != session.currentEventId())
         ctrl->SetFrameEvent(*eventId, true);
 
     std::string stageName = stageToString(stage);
-    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName);
+    GraphicsAPI apiType = toRdcGraphicsApi(session.graphicsApi());
+    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName, apiType);
     if (!si.reflection)
         throw CoreError(CoreError::Code::InternalError,
                         "No shader bound at stage '" + stageName + "' for the current event.");
@@ -314,8 +320,9 @@ std::vector<std::string> listDisassemblyTargets(const Session& session) {
 
 std::vector<ShaderUsageInfo> listShaders(const Session& session) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
+    GraphicsAPI apiType = toRdcGraphicsApi(session.graphicsApi());
 
-    auto shaders = collectUniqueShaders(ctrl, 100);
+    auto shaders = collectUniqueShaders(ctrl, 100, apiType);
 
     std::vector<ShaderUsageInfo> result;
     result.reserve(shaders.size());
@@ -355,8 +362,9 @@ std::vector<ShaderSearchMatch> searchShaders(const Session& session,
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
     const std::string lowerPattern = toLower(pattern);
+    GraphicsAPI apiType = toRdcGraphicsApi(session.graphicsApi());
 
-    auto shaders = collectUniqueShaders(ctrl, 100);
+    auto shaders = collectUniqueShaders(ctrl, 100, apiType);
 
     rdcarray<rdcstr> targets = ctrl->GetDisassemblyTargets(true);
     if (targets.isEmpty())
@@ -377,7 +385,7 @@ std::vector<ShaderSearchMatch> searchShaders(const Session& session,
 
         // Navigate to a known event where this shader is used.
         ctrl->SetFrameEvent(rec.firstEventId, true);
-        ShaderStageInfo si = getShaderStageInfo(ctrl, rec.stage);
+        ShaderStageInfo si = getShaderStageInfo(ctrl, rec.stage, apiType);
         if (!si.reflection) continue;
 
         rdcstr disasmRdc = ctrl->DisassembleShader(::ResourceId(), si.reflection, targets[0]);
@@ -521,11 +529,12 @@ ShaderToolResult runShaderTool(const Session& session,
                                std::optional<uint32_t> eventId) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
-    if (eventId)
+    if (eventId && *eventId != session.currentEventId())
         ctrl->SetFrameEvent(*eventId, true);
 
     std::string stageName = stageToString(stage);
-    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName);
+    GraphicsAPI apiType = toRdcGraphicsApi(session.graphicsApi());
+    ShaderStageInfo si = getShaderStageInfo(ctrl, stageName, apiType);
     if (!si.reflection)
         throw CoreError(CoreError::Code::NoShaderBound,
                         "No shader bound at stage '" + stageName + "' for the current event.");

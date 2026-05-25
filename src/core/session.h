@@ -38,6 +38,7 @@ public:
     uint32_t currentEventId() const;
     const std::string& capturePath() const;
     std::string exportDir() const;
+    GraphicsApi graphicsApi() const;
     ShaderEditState& shaderEditState();
     const ShaderEditState& shaderEditState() const;
 

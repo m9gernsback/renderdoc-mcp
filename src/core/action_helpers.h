@@ -6,6 +6,7 @@
 namespace renderdoc::core {
 
 GraphicsApi toGraphicsApi(GraphicsAPI api);
+GraphicsAPI toRdcGraphicsApi(GraphicsApi api);
 uint32_t countAllEvents(const ActionDescription& action);
 uint32_t countDrawCalls(const ActionDescription& action);
 

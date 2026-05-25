@@ -134,6 +134,7 @@ ICaptureFile* Session::captureFile() const {
 
 uint32_t Session::currentEventId() const { return m_currentEventId; }
 const std::string& Session::capturePath() const { return m_capturePath; }
+GraphicsApi Session::graphicsApi() const { return m_api; }
 
 std::string Session::exportDir() const {
     if (m_capturePath.empty()) return ".";

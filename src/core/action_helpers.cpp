@@ -12,6 +12,16 @@ GraphicsApi toGraphicsApi(GraphicsAPI api) {
     }
 }
 
+GraphicsAPI toRdcGraphicsApi(GraphicsApi api) {
+    switch (api) {
+        case GraphicsApi::D3D11:  return GraphicsAPI::D3D11;
+        case GraphicsApi::D3D12:  return GraphicsAPI::D3D12;
+        case GraphicsApi::OpenGL: return GraphicsAPI::OpenGL;
+        case GraphicsApi::Vulkan: return GraphicsAPI::Vulkan;
+        default:                  return GraphicsAPI::D3D11;
+    }
+}
+
 uint32_t countAllEvents(const ActionDescription& action) {
     uint32_t count = 1;
     for (const auto& child : action.children)

@@ -1,4 +1,5 @@
 #include "core/pipeline.h"
+#include "core/action_helpers.h"
 #include "core/errors.h"
 #include "core/resource_id.h"
 #include "core/session.h"
@@ -117,10 +118,8 @@ PipelineState getPipelineState(const Session& session,
                                 std::optional<uint32_t> eventId) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
-    if (eventId.has_value())
+    if (eventId.has_value() && *eventId != session.currentEventId())
         ctrl->SetFrameEvent(*eventId, true);
-
-    // Cache texture & resource lists for RT info lookups.
     const auto& textures  = ctrl->GetTextures();
     const auto& resources = ctrl->GetResources();
 
@@ -143,11 +142,13 @@ PipelineState getPipelineState(const Session& session,
         }
     };
 
-    APIProperties props = ctrl->GetAPIProperties();
+    // Use session's cached API type instead of re-querying GetAPIProperties()
+    // over the remote proxy (which can return a stale/default value).
+    GraphicsAPI pipelineType = toRdcGraphicsApi(session.graphicsApi());
 
     PipelineState state;
 
-    switch (props.pipelineType) {
+    switch (pipelineType) {
         case GraphicsAPI::D3D11: {
             state.api = GraphicsApi::D3D11;
             const D3D11Pipe::State* ps = ctrl->GetD3D11PipelineState();
@@ -547,13 +548,13 @@ std::map<ShaderStage, StageBindings> getBindings(const Session& session,
                                                    std::optional<uint32_t> eventId) {
     auto* ctrl = session.controller(); // throws NoCaptureOpen if not open
 
-    if (eventId.has_value())
+    if (eventId.has_value() && *eventId != session.currentEventId())
         ctrl->SetFrameEvent(*eventId, true);
 
-    APIProperties props = ctrl->GetAPIProperties();
+    GraphicsAPI cachedApi = toRdcGraphicsApi(session.graphicsApi());
     std::map<ShaderStage, StageBindings> result;
 
-    switch (props.pipelineType) {
+    switch (cachedApi) {
         case GraphicsAPI::D3D11: {
             const auto* state = ctrl->GetD3D11PipelineState();
             if (!state) break;
